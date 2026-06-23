@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mail, Send, MessageSquare, Phone, MapPin, CheckCircle2 } from 'lucide-react'
+import emailjs from '@emailjs/browser'
+import { Mail, Send, MessageSquare, Phone, MapPin, CheckCircle2, AlertCircle } from 'lucide-react'
 import { GithubIcon, LinkedinIcon } from './Icons'
+
+const SERVICE_ID  = import.meta.env.VITE_EMAILJS_SERVICE_ID
+const TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID
+const PUBLIC_KEY  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY
 
 const contactInfo = [
   {
@@ -35,10 +40,10 @@ const contactInfo = [
 
 export default function Contact() {
   const ref = useRef(null)
+  const formRef = useRef(null)
   const [animate, setAnimate] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' })
-  const [submitted, setSubmitted] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [status, setStatus] = useState('idle') // idle | sending | success | error
   const [errors, setErrors] = useState({})
 
   useEffect(() => {
@@ -59,17 +64,32 @@ export default function Contact() {
     return e
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setErrors({})
-    setSending(true)
-    setTimeout(() => {
-      setSending(false)
-      setSubmitted(true)
+    setStatus('sending')
+
+    try {
+      await emailjs.send(
+        SERVICE_ID,
+        TEMPLATE_ID,
+        {
+          name:       form.name,
+          from_email: form.email,
+          subject:    form.subject,
+          message:    form.message,
+          time:       new Date().toLocaleString('fr-FR'),
+        },
+        PUBLIC_KEY
+      )
+      setStatus('success')
       setForm({ name: '', email: '', subject: '', message: '' })
-    }, 1500)
+    } catch (err) {
+      console.error('EmailJS error:', err)
+      setStatus('error')
+    }
   }
 
   const handleChange = (field) => (e) => {
@@ -160,17 +180,18 @@ export default function Contact() {
             style={{ transitionDelay: '200ms' }}
           >
             <div className="card p-8">
-              {submitted ? (
+              {/* Success state */}
+              {status === 'success' ? (
                 <div className="text-center py-12">
                   <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mx-auto mb-4 shadow-lg">
                     <CheckCircle2 className="w-10 h-10 text-white" />
                   </div>
                   <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Message envoyé !</h3>
                   <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm">
-                    Merci pour votre message. Je vous répondrai dans les plus brefs délais.
+                    Merci ! J'ai bien reçu votre message et vous répondrai dans les plus brefs délais.
                   </p>
                   <button
-                    onClick={() => setSubmitted(false)}
+                    onClick={() => setStatus('idle')}
                     className="btn-outline text-sm py-2 px-4"
                   >
                     Envoyer un autre message
@@ -182,7 +203,16 @@ export default function Contact() {
                     <Send className="w-5 h-5 text-violet-500" />
                     Envoyer un message
                   </h3>
-                  <form onSubmit={handleSubmit} className="space-y-5">
+
+                  {/* Error banner */}
+                  {status === 'error' && (
+                    <div className="flex items-center gap-3 p-4 mb-5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+                      <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                      <p className="text-sm">Échec de l'envoi. Réessaie ou contacte-moi directement par email.</p>
+                    </div>
+                  )}
+
+                  <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
@@ -242,10 +272,10 @@ export default function Contact() {
 
                     <button
                       type="submit"
-                      disabled={sending}
+                      disabled={status === 'sending'}
                       className="w-full btn-primary justify-center py-3.5 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      {sending ? (
+                      {status === 'sending' ? (
                         <>
                           <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                           Envoi en cours...
